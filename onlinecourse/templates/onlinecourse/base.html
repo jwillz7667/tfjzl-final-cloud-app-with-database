@@ -1,0 +1,25 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}OnlineCourse{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'onlinecourse/bootstrap.min.css' %}">
+  <link rel="stylesheet" href="{% static 'onlinecourse/site.css' %}">
+</head>
+<body>
+<nav class="navbar navbar-dark bg-primary mb-5"><div class="container">
+  <a class="navbar-brand fw-bold" href="{% url 'onlinecourse:index' %}">OnlineCourse</a>
+  <div class="d-flex align-items-center gap-3">
+  {% if user.is_authenticated %}
+    <span class="text-white">{{ user.get_full_name|default:user.username }}</span>
+    <form action="{% url 'onlinecourse:logout' %}" method="post">{% csrf_token %}<button class="btn btn-outline-light btn-sm">Sign out</button></form>
+  {% else %}
+    <a class="text-white" href="{% url 'onlinecourse:login' %}">Sign in</a>
+    <a class="btn btn-light btn-sm" href="{% url 'onlinecourse:registration' %}">Create account</a>
+  {% endif %}
+  </div>
+</div></nav>
+<main class="container pb-5">{% block content %}{% endblock %}</main>
+<footer class="container border-top py-4 text-secondary">OnlineCourse · Learn, practice, and assess your understanding.</footer>
+</body></html>

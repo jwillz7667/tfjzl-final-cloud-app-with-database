@@ -1,30 +1,51 @@
+"""Manage all course content and inspect learner submissions."""
 from django.contrib import admin
-# <HINT> Import any new Models here
-from .models import Course, Lesson, Instructor, Learner
+from .models import Course, Lesson, Instructor, Learner, Question, Choice, Submission
 
-# <HINT> Register QuestionInline and ChoiceInline classes here
+
+class ChoiceInline(admin.StackedInline):
+    model = Choice
+    extra = 2
+
+
+class QuestionInline(admin.StackedInline):
+    model = Question
+    extra = 1
 
 
 class LessonInline(admin.StackedInline):
     model = Lesson
-    extra = 5
+    extra = 1
 
 
-# Register your models here.
+@admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    inlines = [LessonInline]
-    list_display = ('name', 'pub_date')
-    list_filter = ['pub_date']
-    search_fields = ['name', 'description']
+    inlines = [LessonInline, QuestionInline]
+    list_display = ("name", "pub_date", "total_enrollment")
+    search_fields = ("name", "description")
 
 
+@admin.register(Question)
+class QuestionAdmin(admin.ModelAdmin):
+    inlines = [ChoiceInline]
+    list_display = ("content", "course", "grade")
+    list_filter = ("course",)
+
+
+@admin.register(Lesson)
 class LessonAdmin(admin.ModelAdmin):
-    list_display = ['title']
+    list_display = ("title", "course", "order")
 
 
-# <HINT> Register Question and Choice models here
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = ("id", "enrollment", "score", "possible_score", "submitted_at")
+    readonly_fields = ("enrollment", "choices", "score", "possible_score", "submitted_at")
 
-admin.site.register(Course, CourseAdmin)
-admin.site.register(Lesson, LessonAdmin)
+    def has_add_permission(self, request):
+        return False
+
+
+admin.site.register(Choice)
 admin.site.register(Instructor)
 admin.site.register(Learner)

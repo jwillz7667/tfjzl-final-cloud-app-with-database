@@ -127,3 +127,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Local development and generated assets
+.local-secret
+.demo-credentials.json
+collected_static/
+media/
+*.sqlite3
+.DS_Store

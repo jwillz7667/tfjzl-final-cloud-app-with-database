@@ -1,103 +1,113 @@
-import sys
-from django.utils.timezone import now
-try:
-    from django.db import models
-except Exception:
-    print("There was an error loading django modules. Do you have django installed?")
-    sys.exit()
-
+"""Course content, enrollment, and assessed exam submissions."""
 from django.conf import settings
-import uuid
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+from django.utils.timezone import now
 
 
-# Instructor model
 class Instructor(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     full_time = models.BooleanField(default=True)
-    total_learners = models.IntegerField()
+    total_learners = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return self.user.username
+        return self.user.get_username()
 
 
-# Learner model
 class Learner(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-    )
-    STUDENT = 'student'
-    DEVELOPER = 'developer'
-    DATA_SCIENTIST = 'data_scientist'
-    DATABASE_ADMIN = 'dba'
-    OCCUPATION_CHOICES = [
-        (STUDENT, 'Student'),
-        (DEVELOPER, 'Developer'),
-        (DATA_SCIENTIST, 'Data Scientist'),
-        (DATABASE_ADMIN, 'Database Admin')
-    ]
-    occupation = models.CharField(
-        null=False,
-        max_length=20,
-        choices=OCCUPATION_CHOICES,
-        default=STUDENT
-    )
-    social_link = models.URLField(max_length=200)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    OCCUPATION_CHOICES = [("student", "Student"), ("developer", "Developer"),
+                          ("data_scientist", "Data Scientist"), ("dba", "Database Admin")]
+    occupation = models.CharField(max_length=20, choices=OCCUPATION_CHOICES, default="student")
+    social_link = models.URLField(blank=True)
 
     def __str__(self):
-        return self.user.username + "," + \
-               self.occupation
+        return f"{self.user.get_username()}, {self.occupation}"
 
 
-# Course model
 class Course(models.Model):
-    name = models.CharField(null=False, max_length=30, default='online course')
-    image = models.ImageField(upload_to='course_images/')
+    name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to="course_images/", blank=True)
     description = models.CharField(max_length=1000)
-    pub_date = models.DateField(null=True)
-    instructors = models.ManyToManyField(Instructor)
-    users = models.ManyToManyField(settings.AUTH_USER_MODEL, through='Enrollment')
-    total_enrollment = models.IntegerField(default=0)
-    is_enrolled = False
+    pub_date = models.DateField(default=now)
+    instructors = models.ManyToManyField(Instructor, blank=True)
+    users = models.ManyToManyField(settings.AUTH_USER_MODEL, through="Enrollment")
+    total_enrollment = models.PositiveIntegerField(default=0)
 
     def __str__(self):
-        return "Name: " + self.name + "," + \
-               "Description: " + self.description
+        return self.name
 
 
-# Lesson model
 class Lesson(models.Model):
-    title = models.CharField(max_length=200, default="title")
-    order = models.IntegerField(default=0)
+    title = models.CharField(max_length=200)
+    order = models.PositiveIntegerField(default=0)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     content = models.TextField()
 
+    class Meta:
+        ordering = ("order", "pk")
 
-# Enrollment model
-# <HINT> Once a user enrolled a class, an enrollment entry should be created between the user and course
-# And we could use the enrollment to track information such as exam submissions
+    def __str__(self):
+        return self.title
+
+
 class Enrollment(models.Model):
-    AUDIT = 'audit'
-    HONOR = 'honor'
-    BETA = 'BETA'
-    COURSE_MODES = [
-        (AUDIT, 'Audit'),
-        (HONOR, 'Honor'),
-        (BETA, 'BETA')
-    ]
+    COURSE_MODES = [("audit", "Audit"), ("honor", "Honor"), ("beta", "Beta")]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     date_enrolled = models.DateField(default=now)
-    mode = models.CharField(max_length=5, choices=COURSE_MODES, default=AUDIT)
-    rating = models.FloatField(default=5.0)
+    mode = models.CharField(max_length=5, choices=COURSE_MODES, default="audit")
+    rating = models.FloatField(default=5, validators=[MinValueValidator(0), MaxValueValidator(5)])
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("user", "course"), name="unique_enrollment")]
+
+    def __str__(self):
+        return f"{self.user.get_username()} — {self.course.name}"
 
 
-# One enrollment could have multiple submission
-# One submission could have multiple choices
-# One choice could belong to multiple submissions
-#class Submission(models.Model):
-#    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE)
-#    choices = models.ManyToManyField(Choice)
+class Question(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    content = models.CharField(max_length=200)
+    grade = models.PositiveIntegerField(default=50, validators=[MinValueValidator(1)])
+
+    class Meta:
+        ordering = ("pk",)
+        constraints = [models.CheckConstraint(condition=models.Q(grade__gt=0), name="positive_question_grade")]
+
+    def __str__(self):
+        return self.content
+
+    def is_get_score(self, selected_ids):
+        """Award credit only for the exact correct set; selecting every choice fails."""
+        choices = list(self.choice_set.all())
+        correct = {choice.pk for choice in choices if choice.is_correct}
+        selected = set(selected_ids) & {choice.pk for choice in choices}
+        return bool(correct) and selected == correct
+
+
+class Choice(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    content = models.CharField(max_length=200)
+    is_correct = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("pk",)
+
+    def __str__(self):
+        return self.content
+
+
+class Submission(models.Model):
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE)
+    choices = models.ManyToManyField(Choice, blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    score = models.PositiveIntegerField(default=0)
+    possible_score = models.PositiveIntegerField(default=0)
+
+    @property
+    def percentage(self):
+        return round(100 * self.score / self.possible_score) if self.possible_score else 0
+
+    def __str__(self):
+        return f"Submission {self.pk}: {self.score}/{self.possible_score}"
